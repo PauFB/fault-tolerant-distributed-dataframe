@@ -4,13 +4,14 @@ from xmlrpc.client import ServerProxy
 from xmlrpc.server import SimpleXMLRPCServer
 
 # Set up logging
-self_url = 'http://localhost:8000'
-client_url = 'http://localhost:10000'
 server = SimpleXMLRPCServer(('localhost', 8000), logRequests=True, allow_none=True)
 logging.basicConfig(level=logging.INFO)
 
+# Url
+self_url = 'http://localhost:8000'
+client_url = 'http://localhost:10000'
+
 workers_list = list()
-master_url = 'http://localhost:8000'
 
 
 # Functions
@@ -26,14 +27,6 @@ def get_workers():
     return workers_list
 
 
-def check():
-    return True
-
-
-def get_master():
-    return master_url
-
-
 def workers_fault_tolerance(url):
     w = ServerProxy(url, allow_none=True)
     try:
@@ -41,7 +34,7 @@ def workers_fault_tolerance(url):
         print(url + " up")
     except ConnectionError:
         print(url + " down")
-        workers_list.remove(url)
+        workers_list.remove(url)    # If a node from the worker list fails remove from it
 
 
 def serve4ever():
@@ -51,14 +44,16 @@ def serve4ever():
 server.register_function(add_node)
 server.register_function(remove_node)
 server.register_function(get_workers)
-server.register_function(check)
-server.register_function(get_master)
 
 # Start the server
 try:
     print('Use Ctrl+c to exit')
+
+    # Start server in parallel
     x = threading.Thread(target=serve4ever, daemon=True)
     x.start()
+
+    # Workers fault tolerance
     while True:
         for node in workers_list:
             workers_fault_tolerance(node)
