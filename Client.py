@@ -1,8 +1,27 @@
 import pickle
+import threading
 from time import sleep
 from xmlrpc.client import ServerProxy
+from xmlrpc.server import SimpleXMLRPCServer
 
 import pandas as pd
+
+client = SimpleXMLRPCServer(('localhost', 10000), logRequests=True, allow_none=True)
+
+
+def set_master(m_url):
+    global master
+    master = ServerProxy(m_url, allow_none=True)
+
+
+def serve4ever():
+    client.serve_forever()
+
+
+client.register_function(set_master)
+
+x = threading.Thread(target=serve4ever, daemon=True)
+x.start()
 
 # Communication with master
 master = ServerProxy('http://localhost:8000', allow_none=True)
@@ -33,7 +52,7 @@ print(result)
 
 print("all nodes are available...")
 while len(master.get_workers()) == 3:
-    sleep(1)
+    sleep(30)
 print("algun node s'ha removed")
 
 # GroupBy

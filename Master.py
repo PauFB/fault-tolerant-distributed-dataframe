@@ -5,6 +5,7 @@ from xmlrpc.server import SimpleXMLRPCServer
 
 # Set up logging
 self_url = 'http://localhost:8000'
+client_url = 'http://localhost:10000'
 server = SimpleXMLRPCServer(('localhost', 8000), logRequests=True, allow_none=True)
 logging.basicConfig(level=logging.INFO)
 

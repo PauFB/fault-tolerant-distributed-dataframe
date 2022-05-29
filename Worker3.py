@@ -1,7 +1,6 @@
 import logging
 import pickle
 import threading
-import os
 from time import sleep
 from xmlrpc.client import ServerProxy
 from xmlrpc.server import SimpleXMLRPCServer
@@ -9,7 +8,9 @@ from xmlrpc.server import SimpleXMLRPCServer
 import pandas as pd
 
 # Set up logging
+priority = 9002
 self_url = 'http://localhost:9002'
+client_url = 'http://localhost:10000'
 worker = SimpleXMLRPCServer(('localhost', 9002), logRequests=True, allow_none=True)
 logging.basicConfig(level=logging.INFO)
 
@@ -66,7 +67,6 @@ def min(axis):
     return pickle.dumps(df.min(axis))
 
 
-# Functions
 def add_node(w):
     workers_list.append(w)
 
@@ -88,8 +88,8 @@ def check():
     return True
 
 
-def get_master():
-    return master_url
+def get_priority():
+    return priority
 
 
 def set_master(url):
@@ -113,15 +113,22 @@ def master_fault_tolerance(url):
     global master_url
     try:
         workers_list = m.get_workers()
-        master_url = m.get_master()
         print(url + " up")
     except ConnectionError:
         print(url + " down")
-        master_url = self_url
-        workers_list.remove(self_url)
+        best_master = True
         for n in workers_list:
-            ServerProxy(n, allow_none=True).set_master(self_url)
-            ServerProxy(n, allow_none=True).set_workers(workers_list)
+            if n != self_url:
+                if (ServerProxy(n, allow_none=True).get_priority()) > priority:
+                    best_master = False
+                    break
+        if best_master:
+            master_url = self_url
+            ServerProxy(client_url, allow_none=True).set_master(self_url)
+            workers_list.remove(self_url)
+            for n in workers_list:
+                ServerProxy(n, allow_none=True).set_master(self_url)
+                ServerProxy(n, allow_none=True).set_workers(workers_list)
 
 
 def serve4ever():
@@ -142,7 +149,7 @@ worker.register_function(remove_node)
 worker.register_function(get_workers)
 worker.register_function(set_workers)
 worker.register_function(check)
-worker.register_function(get_master)
+worker.register_function(get_priority)
 worker.register_function(set_master)
 
 # Start the server
