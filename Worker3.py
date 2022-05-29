@@ -22,7 +22,7 @@ master_url = 'http://localhost:8000'
 master = ServerProxy(master_url, allow_none=True)
 
 workers_list = list()
-df = pd.DataFrame()
+df = pd.read_csv("df3.csv")
 
 
 # Functions
