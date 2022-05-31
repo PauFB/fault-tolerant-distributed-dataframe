@@ -3,159 +3,155 @@ import pickle
 import threading
 from xmlrpc.client import ServerProxy
 from xmlrpc.server import SimpleXMLRPCServer
-import pandas as pd
 
-df = pd.DataFrame()
+import pandas
 
 
-def general_worker(port, csv):
-    # Set up logging
-    worker = SimpleXMLRPCServer(('localhost', port), logRequests=True, allow_none=True)
-    logging.basicConfig(level=logging.INFO)
+class Worker:
+    def __init__(self, port, csv_path):
+        # Set up logging
+        worker = SimpleXMLRPCServer(('localhost', port), logRequests=True, allow_none=True)
+        logging.basicConfig(level=logging.INFO)
 
-    # Priority for master election
-    priority = 9000
+        # Priority magnitude for master election
+        self.priority = 9000
 
-    # Url
-    self_url = 'http://localhost:' + str(port)
-    client_url = 'http://localhost:10000'
-    master_url = 'http://localhost:8000'
+        # URLs
+        self.self_url = 'http://localhost:' + str(port)
+        self.client_url = 'http://localhost:10000'
+        self.master_url = 'http://localhost:8000'
 
-    # Set up client to master
-    master = ServerProxy(master_url, allow_none=True)
+        # Set up client to master
+        master = ServerProxy(self.master_url, allow_none=True)
 
-    workers_list = list()
-    df = pd.read_csv(csv)
+        self.workers_list = list()
+        self.df = pandas.read_csv(csv_path)
 
-    # Functions
-    def read_csv(urlpath):
-        global df
-        df = pd.read_csv(urlpath)
+        # Server functions
+        def read_csv(urlpath):
+            self.df = pandas.read_csv(urlpath)
 
-    def apply(func):
-        return pickle.dumps(df.apply(eval(func)))
+        def apply(func):
+            return pickle.dumps(self.df.apply(eval(func)))
 
-    def columns():
-        return pickle.dumps(df.columns)
+        def columns():
+            return pickle.dumps(self.df.columns)
 
-    def groupby(by):
-        return pickle.dumps(df.groupby(by))
+        def groupby(by):
+            return pickle.dumps(self.df.groupby(by))
 
-    def head(n=5):
-        return pickle.dumps(df.head(n))
+        def head(n=5):
+            return pickle.dumps(self.df.head(n))
 
-    def isin(values):
-        return pickle.dumps(df.isin(values))
+        def isin(values):
+            return pickle.dumps(self.df.isin(values))
 
-    def items():
-        """ list de tuples [label, contentSeries] """
-        aux = ''
-        for label, content in df.items():
-            aux += f'label: {label}\n'
-            aux += f'content:\n'
-            for c in content:
-                aux += f'{c}\n'
-        return aux
+        def items():
+            aux = ''
+            for label, content in self.df.items():
+                aux += f'label: {label}\n'
+                aux += f'content:\n'
+                for c in content:
+                    aux += f'{c}\n'
+            return aux
 
-    def max(axis):
-        return pickle.dumps(df.max(axis))
+        def max(axis):
+            return pickle.dumps(self.df.max(axis))
 
-    def min(axis):
-        return pickle.dumps(df.min(axis))
+        def min(axis):
+            return pickle.dumps(self.df.min(axis))
 
-    def add_node(w):
-        workers_list.append(w)
+        def add_node(worker_url):
+            self.workers_list.append(worker_url)
 
-    def remove_node(w):
-        workers_list.remove(w)
+        def remove_node(worker_url):
+            self.workers_list.remove(worker_url)
 
-    def get_workers():
-        return workers_list
+        def get_workers():
+            return self.workers_list
 
-    def set_workers(w_list):
-        global workers_list
-        workers_list = w_list
+        def set_workers(workers_list):
+            self.workers_list = workers_list
 
-    def check():
-        return True
+        def check():
+            return True
 
-    def get_priority():
-        return priority
+        def get_priority():
+            return self.priority
 
-    def set_master(url):
-        global master_url
-        master_url = url
+        def set_master(url):
+            self.master_url = url
 
-    def workers_fault_tolerance(url):
-        w = ServerProxy(url, allow_none=True)
+        def check_worker_availabilities():
+            for url in self.workers_list:
+                w = ServerProxy(url, allow_none=True)
+                try:
+                    w.check()
+                    print(url + " up")
+                except ConnectionError:
+                    print(url + " down")
+                    # Remove any unreachable node that causes a connection error
+                    self.workers_list.remove(url)
+
+        def check_master_availability():
+            m = ServerProxy(self.master_url, allow_none=True)
+            try:
+                self.workers_list = m.get_workers()
+                print(self.master_url + " up")
+            except ConnectionError:
+                print(self.master_url + " down")
+                become_master = True
+                for worker_url in self.workers_list:  # For all other workers
+                    if worker_url != self.self_url and worker_url != self.master_url:
+                        # If another worker has a higher priority magnitude do not become master
+                        if (ServerProxy(worker_url, allow_none=True).get_priority()) > self.priority:
+                            become_master = False
+                            break
+                if become_master:
+                    self.master_url = self.self_url
+                    ServerProxy(self.client_url, allow_none=True).set_master(self.self_url)  # Notify the client
+                    # Notify all workers except myself and the recently dead master
+                    for worker_url in self.workers_list:
+                        if worker_url != self.self_url and worker_url != self.master_url:
+                            ServerProxy(worker_url, allow_none=True).set_master(self.self_url)
+
+        def serve_forever():
+            worker.serve_forever()
+
+        worker.register_function(apply)
+        worker.register_function(columns)
+        worker.register_function(groupby)
+        worker.register_function(head)
+        worker.register_function(isin)
+        worker.register_function(items)
+        worker.register_function(max)
+        worker.register_function(min)
+        worker.register_function(add_node)
+        worker.register_function(remove_node)
+        worker.register_function(read_csv)
+        worker.register_function(check)
+        worker.register_function(get_priority)
+        worker.register_function(get_workers)
+        worker.register_function(set_master)
+        worker.register_function(set_workers)
+
+        # Start the server
         try:
-            w.check()
-            print(url + " up")
-        except ConnectionError:
-            print(url + " down")
-            workers_list.remove(url)  # If a node from the worker list fails remove from it
+            print('Use Ctrl+c to remove from cluster')
 
-    def master_fault_tolerance(url):
-        m = ServerProxy(url, allow_none=True)
-        global workers_list
-        global master_url
-        try:
-            workers_list = m.get_workers()
-            print(url + " up")
-        except ConnectionError:
-            print(url + " down")
-            best_master = True
-            for n in workers_list:  # For the other workers
-                if n != self_url and n != url:
-                    # If another worker has major priority don't become master
-                    if (ServerProxy(n, allow_none=True).get_priority()) > priority:
-                        best_master = False
-                        break
-            if best_master:
-                master_url = self_url  # Become master
-                ServerProxy(client_url, allow_none=True).set_master(self_url)  # Notify client
-                for n in workers_list:
-                    if n != self_url and n != url:
-                        ServerProxy(n, allow_none=True).set_master(self_url)  # Notify other workers
+            # Start server in parallel
+            x = threading.Thread(target=serve_forever, daemon=True)
+            x.start()
 
-    def serve4ever():
-        worker.serve_forever()
+            # Add worker to the cluster
+            master.add_node(self.self_url)
 
-    worker.register_function(read_csv)
-    worker.register_function(apply)
-    worker.register_function(columns)
-    worker.register_function(groupby)
-    worker.register_function(head)
-    worker.register_function(isin)
-    worker.register_function(items)
-    worker.register_function(max)
-    worker.register_function(min)
-    worker.register_function(add_node)
-    worker.register_function(remove_node)
-    worker.register_function(get_workers)
-    worker.register_function(set_workers)
-    worker.register_function(check)
-    worker.register_function(get_priority)
-    worker.register_function(set_master)
-
-    # Start the server
-    try:
-        print('Use Ctrl+c to remove from cluster')
-
-        # Start server in parallel
-        x = threading.Thread(target=serve4ever, daemon=True)
-        x.start()
-
-        # Add worker to the cluster
-        master.add_node(self_url)
-
-        # Fault tolerance
-        while True:
-            if master_url == self_url:
-                for node in workers_list:
-                    workers_fault_tolerance(node)
-            else:
-                master_fault_tolerance(master_url)
-    except KeyboardInterrupt:
-        # master.remove_node(self_url)
-        print('Exiting')
+            # Fault tolerance
+            while True:
+                if self.master_url == self.self_url:
+                    check_worker_availabilities()
+                else:
+                    check_master_availability()
+        except KeyboardInterrupt:
+            master.remove_node(self.self_url)
+            print('Exiting')

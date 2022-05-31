@@ -1,3 +1,3 @@
-from Worker import general_worker
+from Worker import Worker
 
-general_worker(9002, "df3.csv")
+Worker(9002, "df3.csv")
