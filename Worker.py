@@ -3,7 +3,6 @@ import pickle
 import threading
 from xmlrpc.client import ServerProxy
 from xmlrpc.server import SimpleXMLRPCServer
-
 import pandas
 
 
@@ -14,7 +13,7 @@ class Worker:
         logging.basicConfig(level=logging.INFO)
 
         # Priority magnitude for master election
-        self.priority = 9000
+        self.priority = port
 
         # URLs
         self.self_url = 'http://localhost:' + str(port)
@@ -101,7 +100,7 @@ class Worker:
             except ConnectionError:
                 print(self.master_url + " down")
                 become_master = True
-                for worker_url in self.workers_list:  # For all other workers
+                for worker_url in self.workers_list:  # For all others workers
                     if worker_url != self.self_url and worker_url != self.master_url:
                         # If another worker has a higher priority magnitude do not become master
                         if (ServerProxy(worker_url, allow_none=True).get_priority()) > self.priority:
