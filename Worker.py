@@ -1,6 +1,7 @@
 import logging
 import pickle
 import threading
+from time import sleep
 from xmlrpc.client import ServerProxy
 from xmlrpc.server import SimpleXMLRPCServer
 import pandas
@@ -93,15 +94,16 @@ class Worker:
                     self.workers_list.remove(url)
 
         def check_master_availability():
-            m = ServerProxy(self.master_url, allow_none=True)
+            m_url = self.master_url
+            m = ServerProxy(m_url, allow_none=True)
             try:
                 self.workers_list = m.get_workers()
-                print(self.master_url + " up")
+                print(m_url + " up")
             except ConnectionError:
-                print(self.master_url + " down")
+                print(m_url + " down")
                 become_master = True
                 for worker_url in self.workers_list:  # For all others workers
-                    if worker_url != self.self_url and worker_url != self.master_url:
+                    if worker_url != self.self_url and worker_url != m_url:
                         # If another worker has a higher priority magnitude do not become master
                         if (ServerProxy(worker_url, allow_none=True).get_priority()) > self.priority:
                             become_master = False
@@ -111,8 +113,12 @@ class Worker:
                     ServerProxy(self.client_url, allow_none=True).set_master(self.self_url)  # Notify the client
                     # Notify all workers except myself and the recently dead master
                     for worker_url in self.workers_list:
-                        if worker_url != self.self_url and worker_url != self.master_url:
+                        if worker_url != self.self_url and worker_url != m_url:
                             ServerProxy(worker_url, allow_none=True).set_master(self.self_url)
+                else:
+                    old_master = self.master_url
+                    while self.master_url == old_master:
+                        sleep(1)
 
         def serve_forever():
             worker.serve_forever()
