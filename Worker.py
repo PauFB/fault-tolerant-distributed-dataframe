@@ -94,26 +94,26 @@ class Worker:
                     self.workers_list.remove(url)
 
         def check_master_availability():
-            m_url = self.master_url
-            m = ServerProxy(m_url, allow_none=True)
+            m = ServerProxy(self.master_url, allow_none=True)
             try:
                 self.workers_list = m.get_workers()
-                print(m_url + " up")
+                print(self.master_url + " up")
             except ConnectionError:
-                print(m_url + " down")
+                print(self.master_url + " down")
                 become_master = True
                 for worker_url in self.workers_list:  # For all others workers
-                    if worker_url != self.self_url and worker_url != m_url:
+                    if worker_url != self.self_url and worker_url != self.master_url:
                         # If another worker has a higher priority magnitude do not become master
                         if (ServerProxy(worker_url, allow_none=True).get_priority()) > self.priority:
                             become_master = False
                             break
                 if become_master:
+                    dead_master = self.master_url
                     self.master_url = self.self_url
                     ServerProxy(self.client_url, allow_none=True).set_master(self.self_url)  # Notify the client
                     # Notify all workers except myself and the recently dead master
                     for worker_url in self.workers_list:
-                        if worker_url != self.self_url and worker_url != m_url:
+                        if worker_url != self.self_url and worker_url != dead_master:
                             ServerProxy(worker_url, allow_none=True).set_master(self.self_url)
                 else:
                     old_master = self.master_url
