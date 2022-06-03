@@ -1,4 +1,5 @@
 import pickle
+import sys
 import threading
 from time import sleep
 from xmlrpc.client import ServerProxy
@@ -136,7 +137,7 @@ print("\nTesting max(0)")
 finished = False
 while not finished:
     try:
-        result = pandas.Series([0, 0, 0], index=['x', 'y', 'z'])
+        result = pandas.Series([-sys.maxsize - 1, -sys.maxsize - 1, -sys.maxsize - 1], index=['x', 'y', 'z'])
         for worker in master.get_workers():
             max_wk = pickle.loads(ServerProxy(worker, allow_none=True).max(0).data)
             i = 0
@@ -155,7 +156,7 @@ print("\nTesting min(0)")
 finished = False
 while not finished:
     try:
-        result = pandas.Series([999, 999, 999], index=['x', 'y', 'z'])
+        result = pandas.Series([sys.maxsize, sys.maxsize, sys.maxsize], index=['x', 'y', 'z'])
         for worker in master.get_workers():
             max_wk = pickle.loads(ServerProxy(worker, allow_none=True).min(0).data)
             i = 0
